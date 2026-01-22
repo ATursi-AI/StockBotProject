@@ -73,20 +73,19 @@ def get_stock_data(symbol):
 
         # 7. VALUES & TRIGGERS
         price = df['Close'].iloc[-1]
-        rsi, adx = df['RSI'].iloc[-1], df['ADX'].iloc[-1]
+        rsi_val = df['RSI'].iloc[-1] if not df['RSI'].isnull().iloc[-1] else 0.0
+        adx_val = df['ADX'].iloc[-1] if not df['ADX'].isnull().iloc[-1] else 0.0
         hi_52, lo_52 = df['High'].max(), df['Low'].min()
         atr = df['ATR'].iloc[-1]
         sma50, sma200 = df['SMA_50'].iloc[-1], df['SMA_200'].iloc[-1]
 
         cross_trigger = ""
-        # Safety Check for SMA Triggers
         if sma50 is not None and sma200 is not None and not df['SMA_50'].isnull().iloc[-2]:
             if df['SMA_50'].iloc[-2] < df['SMA_200'].iloc[-2] and sma50 >= sma200:
                 cross_trigger = "\n🌟 **TRIGGER: GOLDEN CROSS**"
             elif df['SMA_50'].iloc[-2] > df['SMA_200'].iloc[-2] and sma50 <= sma200:
                 cross_trigger = "\n💀 **TRIGGER: DEATH CROSS**"
 
-        # Safety Check for Synopsis
         if sma50 is not None and sma200 is not None:
             if price > sma50 and sma50 > sma200:
                 synopsis = "Bullish trend confirmed; institutional support is holding above the 50-day SMA."
@@ -98,11 +97,9 @@ def get_stock_data(symbol):
             synopsis = "Technical trend is currently neutral due to insufficient SMA data."
 
         # 8. FINAL OUTPUT
-        # Verdict safety check
         verdict = "⚠️ HOLD"
-        if rsi is not None and sma50 is not None:
-            if rsi < 55 and price > sma50:
-                verdict = "🚀 STRONG BUY"
+        if rsi_val > 0 and rsi_val < 55 and sma50 and price > sma50:
+            verdict = "🚀 STRONG BUY"
 
         return (
             f"🔍 **SUPER-SCAN: {symbol.upper()}**\n"
@@ -118,9 +115,9 @@ def get_stock_data(symbol):
             f"🤖 **AI PATTERN ARCHITECT**\n"
             f"Identified: `{pattern_text}`\n\n"
             f"📊 **TECHNICAL SCAN**\n"
-            f"{'🟢' if rsi < 45 else '🔴' if rsi > 65 else '🟡'} RSI: {rsi:.1f if rsi else 0.0}\n"
+            f"{'🟢' if rsi_val < 45 else '🔴' if rsi_val > 65 else '🟡'} RSI: {rsi_val:.1f}\n"
             f"{'🟢' if df['MACD'].iloc[-1] > df['SIGNAL'].iloc[-1] else '🔴'} MACD: {'Bullish' if df['MACD'].iloc[-1] > df['SIGNAL'].iloc[-1] else 'Bearish'}\n"
-            f"{'🔵' if adx > 25 else '⚪️'} ADX: {adx:.1f if adx else 0.0} (Strength)\n"
+            f"{'🔵' if adx_val > 25 else '⚪️'} ADX: {adx_val:.1f} (Strength)\n"
             f"• 50-Day SMA: ${sma50:.2f if sma50 else 0.00}\n"
             f"• 200-Day SMA: ${sma200:.2f if sma200 else 0.00}\n"
             f"• Trend: {'📈 Uptrend' if sma200 and price > sma200 else '📉 Downtrend'}\n\n"
