@@ -1,34 +1,37 @@
+import os
+import requests
 import yfinance as yf
 import pandas_ta as ta
+from dotenv import load_dotenv
+
+load_dotenv()
+FINNHUB_KEY = os.getenv("FINNHUB_KEY")
 
 def get_stock_data(symbol):
     try:
-        # 1. Create the ticker object
+        # 1. Get the Full Company Name via Finnhub (Reliable)
+        name_url = f'https://finnhub.io/api/v1/stock/profile2?symbol={symbol}&token={FINNHUB_KEY}'
+        name_response = requests.get(name_url).json()
+        full_name = name_response.get('name', symbol.upper())
+
+        # 2. Get the Technical Data via yfinance
         ticker = yf.Ticker(symbol)
-        
-        # 2. Get historical data first (this is the most reliable part of the library)
         df = ticker.history(period="1y")
 
         if df.empty:
             return None
 
-        # 3. FIX: Get Company Name from Metadata instead of .info
-        # This works much better on Cloud Servers (Render)
-        metadata = ticker.history_metadata
-        full_name = metadata.get('longName', metadata.get('symbol', symbol.upper()))
-
-        # 4. Calculate Technicals
+        # 3. Calculate Technicals
         df['RSI'] = ta.rsi(df['Close'], length=14)
         df['EMA_50'] = ta.ema(df['Close'], length=50)
 
         current_price = df['Close'].iloc[-1]
         rsi_value = df['RSI'].iloc[-1]
-        
         rsi_signal = "🟢 BULLISH" if rsi_value < 30 else "🔴 BEARISH" if rsi_value > 70 else "🟡 NEUTRAL"
 
-        # 5. Format the Header: "AAPL Apple Inc."
+        # 4. Format the Output
         report = (
-            f"📊 *{symbol.upper()} {full_name}*\n"
+            f"📊 *{symbol.upper()} - {full_name}*\n"
             f"━━━━━━━━━━━━━━━━━━━━\n"
             f"💰 *Current Price:* ${current_price:.2f}\n"
             f"📈 *RSI (14):* {rsi_value:.2f} ({rsi_signal})\n"
