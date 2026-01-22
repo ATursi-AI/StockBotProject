@@ -19,16 +19,15 @@ def home():
 # 2. This function handles the Telegram polling
 def start_bot():
     print("🚀 Bot process starting...")
+    # This prevents the 409 Conflict by clearing old connections
     bot.remove_webhook()
     bot.infinity_polling(none_stop=True, skip_pending=True)
 
-# 3. START THE BOT IN A BACKGROUND THREAD
-# This allows Gunicorn to handle web pings while the bot stays active
+# 3. Start the bot in a background thread
 threading_bot = Thread(target=start_bot)
 threading_bot.daemon = True
 threading_bot.start()
 
-# --- BOT HANDLERS (Your existing robust logic) ---
 @bot.message_handler(commands=['start', 'help'])
 def send_welcome(message):
     bot.reply_to(message, "Send me a ticker symbol (e.g., AAPL) for a Super-Scan.")
@@ -42,6 +41,3 @@ def handle_stock(message):
         bot.reply_to(message, report, parse_mode='Markdown')
     else:
         bot.reply_to(message, "❌ Analysis Error.")
-
-# Note: We NO LONGER need the if __name__ == "__main__" block 
-# because Gunicorn imports 'app' directly.
