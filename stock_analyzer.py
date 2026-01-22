@@ -30,7 +30,7 @@ def get_stock_data(symbol):
         df['SMA_50'] = ta.sma(df['Close'], length=50)
         df['SMA_200'] = ta.sma(df['Close'], length=200)
 
-        # 4. EARNINGS & SENTIMENT (Finnhub)
+        # 4. EARNINGS & SENTIMENT
         earn_url = f'https://finnhub.io/api/v1/stock/earnings?symbol={symbol.upper()}&token={FINNHUB_KEY}'
         earn_data = requests.get(earn_url).json()
         earn_text = "N/A"
@@ -42,34 +42,34 @@ def get_stock_data(symbol):
         titles = " ".join([n.get('title', '') for n in news])
         sentiment = TextBlob(titles).sentiment.polarity if titles else 0
 
-        # 5. INSTITUTIONAL INTEL (Options Flow)
+        # 5. INSTITUTIONAL INTEL (Crash Prevention Logic)
         pcr = "N/A"
         whale_alert = "No unusual spikes"
         try:
             expirations = ticker.options
-            if expirations:
+            if expirations and len(expirations) > 0:
                 opt = ticker.option_chain(expirations[0])
                 calls_vol = opt.calls['volume'].sum()
                 puts_vol = opt.puts['volume'].sum()
-                pcr_val = puts_vol / calls_vol if calls_vol > 0 else 0
-                pcr = f"{pcr_val:.2f} ({'Bullish' if pcr_val < 0.7 else 'Bearish' if pcr_val > 1.0 else 'Neutral'})"
+                if calls_vol > 0:
+                    pcr_val = puts_vol / calls_vol
+                    pcr = f"{pcr_val:.2f} ({'Bullish' if pcr_val < 0.7 else 'Bearish' if pcr_val > 1.0 else 'Neutral'})"
+                
                 high_oi_calls = opt.calls[opt.calls['volume'] > opt.calls['openInterest']]
                 if not high_oi_calls.empty:
                     whale_alert = f"🚨 UNUSUAL OI SPIKE at ${high_oi_calls.iloc[0]['strike']} Call"
-        except: pass
+        except Exception: 
+            pcr = "N/A (Limited Data)"
 
-        # 6. AI PATTERN ARCHITECT (Stable Logic - No TA-Lib required)
+        # 6. AI PATTERN ARCHITECT (Stable Logic)
         patterns = []
         last, prev = df.iloc[-1], df.iloc[-2]
-        # Manual check for Engulfing
         if last['Close'] > prev['Open'] and last['Open'] < prev['Close'] and last['Close'] > last['Open'] and prev['Close'] < prev['Open']:
             patterns.append("Engulfing (Bullish)")
-        # Manual check for Hammer
         body = abs(last['Close'] - last['Open'])
         lower_wick = min(last['Open'], last['Close']) - last['Low']
         if lower_wick > (body * 2):
             patterns.append("Hammer (Bullish)")
-        
         pattern_text = ", ".join(patterns) if patterns else "No clear patterns identified"
 
         # 7. VALUES & TRIGGERS
@@ -92,7 +92,7 @@ def get_stock_data(symbol):
         else:
             synopsis = "Bearish pattern; price action is trending below major institutional moving averages."
 
-        # 8. FINAL OUTPUT (Matching the Gold Standard sequence)
+        # 8. FINAL OUTPUT
         return (
             f"🔍 **SUPER-SCAN: {symbol.upper()}**\n"
             f"🏢 *{full_name}*\n"
