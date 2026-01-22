@@ -2,75 +2,79 @@ import os
 import requests
 import yfinance as yf
 import pandas_ta as ta
+from textblob import TextBlob
 from dotenv import load_dotenv
 
-# Load keys for the Cloud
 load_dotenv()
 FINNHUB_KEY = os.getenv("FINNHUB_KEY")
 
 def get_stock_data(symbol):
     try:
-        # 1. GET FULL NAME (The Cloud-Safe Way)
+        # 1. Company Name (Finnhub)
         name_url = f'https://finnhub.io/api/v1/stock/profile2?symbol={symbol.upper()}&token={FINNHUB_KEY}'
         name_response = requests.get(name_url).json()
         full_name = name_response.get('name', symbol.upper())
 
-        # 2. GET HISTORICAL DATA
+        # 2. Price Data & Technicals
         ticker = yf.Ticker(symbol)
         df = ticker.history(period="1y")
-        if df.empty:
-            return None
+        if df.empty: return None
 
-        # 3. ADVANCED TECHNICAL CALCULATIONS (The "Hedge Fund" Logic)
-        # Moving Averages
-        df['SMA_50'] = ta.sma(df['Close'], length=50)
-        df['SMA_200'] = ta.sma(df['Close'], length=200)
-        
-        # Volatility & Risk (ATR)
-        df['ATR'] = ta.atr(df['High'], df['Low'], df['Close'], length=14)
-        
-        # RSI
+        # Indicators
         df['RSI'] = ta.rsi(df['Close'], length=14)
+        macd = ta.macd(df['Close'])
+        df['MACD'] = macd['MACD_12_26_9']
+        df['SIGNAL'] = macd['MACDs_12_26_9']
+        adx = ta.adx(df['High'], df['Low'], df['Close'])
+        df['ADX'] = adx['ADX_14']
+        df['ATR'] = ta.atr(df['High'], df['Low'], df['Close'], length=14)
 
-        # 4. DATA POINTS FOR REPORT
-        current_price = df['Close'].iloc[-1]
-        sma_50 = df['SMA_50'].iloc[-1]
-        sma_200 = df['SMA_200'].iloc[-1]
-        rsi_val = df['RSI'].iloc[-1]
-        atr_val = df['ATR'].iloc[-1]
+        # 3. Intelligence (Sentiment & Catalysts)
+        news = ticker.news[:3]
+        sentiment_score = 0
+        if news:
+            titles = " ".join([n['title'] for n in news])
+            sentiment_score = TextBlob(titles).sentiment.polarity
         
-        # Price Targets (Fibonacci 61.8% Retracement)
-        year_high = df['High'].max()
-        year_low = df['Low'].min()
-        fib_618 = year_high - (0.618 * (year_high - year_low))
-        
-        # Stop Loss (2x ATR)
-        stop_loss = current_price - (atr_val * 2)
+        mood = "🔥 BULLISH" if sentiment_score > 0.1 else "🧊 BEARISH" if sentiment_score < -0.1 else "Neutral"
 
-        # 5. SIGNALS & VERDICT
-        trend = "📈 BULLISH" if current_price > sma_50 else "📉 BEARISH"
-        golden_cross = "✅ GOLDEN CROSS" if sma_50 > sma_200 else "❌ BELOW 200-DAY"
-        
-        rsi_signal = "🟢 OVERSOLD" if rsi_val < 30 else "🔴 OVERBOUGHT" if rsi_val > 70 else "🟡 NEUTRAL"
+        fin_url = f'https://finnhub.io/api/v1/stock/recommendation?symbol={symbol.upper()}&token={FINNHUB_KEY}'
+        fin_data = requests.get(fin_url).json()
+        analyst_target = "N/A"
+        if fin_data:
+            analyst_target = f"{fin_data[0]['buy'] + fin_data[0]['strongBuy']} Buy ratings"
 
-        # 6. THE COMPLETE REPORT
+        # 4. Score & Verdict Logic
+        price = df['Close'].iloc[-1]
+        rsi = df['RSI'].iloc[-1]
+        adx_val = df['ADX'].iloc[-1]
+        score = 0
+        if rsi < 40: score += 1
+        if rsi > 70: score -= 1
+        if price > df['Close'].rolling(50).mean().iloc[-1]: score += 1
+        if sentiment_score > 0: score += 1
+
+        verdict = "🚀 STRONG BUY" if score >= 2 else "⚠️ HOLD" if score >= 0 else "📉 SELL"
+
+        # 5. The Robust Output
         report = (
-            f"🏦 *{symbol.upper()} - {full_name}*\n"
+            f"🔍 **SUPER-SCAN: {symbol.upper()}**\n"
+            f"🏢 *{full_name}*\n"
             f"━━━━━━━━━━━━━━━━━━━━\n"
-            f"💰 *Current Price:* ${current_price:.2f}\n"
-            f"📊 *Market Trend:* {trend}\n"
-            f"🧬 *Institutional:* {golden_cross}\n\n"
-            f"🔍 **TECHNICAL SPECS**\n"
-            f"• RSI (14): {rsi_val:.2f} ({rsi_signal})\n"
-            f"• 50-Day SMA: ${sma_50:.2f}\n"
-            f"• 200-Day SMA: ${sma_200:.2f}\n\n"
-            f"🛡️ **RISK MANAGEMENT**\n"
-            f"• Suggested Stop-Loss: ${stop_loss:.2f}\n"
-            f"• Major Support (Fib 61.8%): ${fib_618:.2f}\n"
+            f"💰 **PRICE:** ${price:.2f}\n"
+            f"🎭 **MOOD:** {mood}\n"
+            f"📊 **ANALYSTS:** {analyst_target}\n\n"
+            f"⚡ **SIGNALS**\n"
+            f"{'🟢' if rsi < 45 else '🔴' if rsi > 65 else '🟡'} RSI: {rsi:.1f}\n"
+            f"{'🟢' if df['MACD'].iloc[-1] > df['SIGNAL'].iloc[-1] else '🔴'} MACD: Crossing\n"
+            f"{'🟢' if adx_val > 25 else '🟡'} Trend Strength: {adx_val:.1f}\n\n"
+            f"🛡️ **RISK SETUP**\n"
+            f"• Stop Loss (2x ATR): ${price - (df['ATR'].iloc[-1]*2):.2f}\n"
+            f"• Volatility (ATR): ${df['ATR'].iloc[-1]:.2f}\n\n"
+            f"🏆 **VERDICT: {verdict}**\n"
             f"━━━━━━━━━━━━━━━━━━━━"
         )
         return report
 
     except Exception as e:
-        print(f"Error in analysis: {e}")
-        return f"❌ Error analyzing {symbol}. Check logs."
+        return f"❌ Analysis Error: {str(e)}"
