@@ -1,4 +1,5 @@
 import os
+import math  # Added this to fix the isnan error
 import requests
 import yfinance as yf
 import pandas_ta as ta
@@ -80,9 +81,9 @@ def get_stock_data(symbol):
         sma50_raw = df['SMA_50'].iloc[-1]
         sma200_raw = df['SMA_200'].iloc[-1]
         
-        # PRE-FORMATTING TO PREVENT CRASHES
-        sma50_display = f"{sma50_raw:.2f}" if sma50_raw and not os.path.isnan(sma50_raw) else "0.00"
-        sma200_display = f"{sma200_raw:.2f}" if sma200_raw and not os.path.isnan(sma200_raw) else "0.00"
+        # FIXED: Using math.isnan instead of os.path.isnan
+        sma50_display = f"{sma50_raw:.2f}" if sma50_raw and not math.isnan(sma50_raw) else "0.00"
+        sma200_display = f"{sma200_raw:.2f}" if sma200_raw and not math.isnan(sma200_raw) else "0.00"
         rsi_display = f"{rsi_val:.1f}"
         adx_display = f"{adx_val:.1f}"
 
