@@ -10,7 +10,7 @@ FINNHUB_KEY = os.getenv("FINNHUB_KEY")
 
 def get_stock_data(symbol):
     try:
-        # 1. PROFILE & NAME (Finnhub)
+        # 1. PROFILE & NAME
         name_url = f'https://finnhub.io/api/v1/stock/profile2?symbol={symbol.upper()}&token={FINNHUB_KEY}'
         name_res = requests.get(name_url).json()
         full_name = name_res.get('name', symbol.upper())
@@ -73,8 +73,11 @@ def get_stock_data(symbol):
 
         # 7. VALUES & TRIGGERS
         price = df['Close'].iloc[-1]
-        rsi_val = df['RSI'].iloc[-1] if not df['RSI'].isnull().iloc[-1] else 0.0
-        adx_val = df['ADX'].iloc[-1] if not df['ADX'].isnull().iloc[-1] else 0.0
+        
+        # FIXED: Simple logic to avoid format specifier errors
+        rsi_val = float(df['RSI'].iloc[-1]) if not df['RSI'].isnull().iloc[-1] else 0.0
+        adx_val = float(df['ADX'].iloc[-1]) if not df['ADX'].isnull().iloc[-1] else 0.0
+        
         hi_52, lo_52 = df['High'].max(), df['Low'].min()
         atr = df['ATR'].iloc[-1]
         sma50, sma200 = df['SMA_50'].iloc[-1], df['SMA_200'].iloc[-1]
