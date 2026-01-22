@@ -7,40 +7,34 @@ from stock_analyzer import get_stock_data
 
 # 1. Load Environment Variables
 load_dotenv()
-
-# 2. Grab the Token safely
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_STOCK_TOKEN")
 
 if not TELEGRAM_TOKEN:
-    print("❌ Error: TELEGRAM_STOCK_TOKEN not found.")
-    exit()
-else:
-    print("✅ Token loaded successfully.")
+    exit("❌ Error: TELEGRAM_STOCK_TOKEN not found.")
 
-# 3. Initialize the Bot
+# 2. Initialize the Bot
 bot = telebot.TeleBot(TELEGRAM_TOKEN)
 
-# --- RENDER HEARTBEAT SETUP ---
-app = Flask('')
+# --- WEB SERVER (HEARTBEAT) ---
+app = Flask(__name__) # Use __name__ instead of '' for Gunicorn
 
 @app.route('/')
 def home():
     return "I am alive!"
 
 def run():
-    # Render provides a 'PORT' environment variable. We MUST use it.
+    # This is still here for local testing, 
+    # but Gunicorn will handle the port on Render.
     port = int(os.environ.get("PORT", 8080))
     app.run(host='0.0.0.0', port=port)
 
 def keep_alive():
     t = Thread(target=run)
-    t.daemon = True  # Ensures the thread closes when the main program stops
+    t.daemon = True
     t.start()
 # ------------------------------
 
-print("📈 WallStreetBot is online. Waiting for tickers...")
-
-# --- TELEGRAM HANDLERS ---
+print("📈 WallStreetBot is online...")
 
 @bot.message_handler(commands=['start', 'help'])
 def send_welcome(message):
@@ -49,9 +43,8 @@ def send_welcome(message):
 @bot.message_handler(func=lambda message: True)
 def handle_stock(message):
     symbol = message.text.upper().strip()
-    
     if " " in symbol or len(symbol) > 6:
-        bot.reply_to(message, "Please send a valid ticker symbol (e.g., NVDA).")
+        bot.reply_to(message, "Please send a valid ticker symbol.")
         return
 
     bot.send_chat_action(message.chat.id, 'typing')
@@ -62,11 +55,10 @@ def handle_stock(message):
     else:
         bot.reply_to(message, f"❌ Could not find data for '{symbol}'.")
 
-# 4. Run the Bot
 if __name__ == "__main__":
-    # Start the web server first
-    keep_alive()
+    # If running locally (python bot.py), keep_alive starts the server.
+    # On Render, Gunicorn will start 'app' directly.
+    if not os.environ.get("GUNICORN_RUNNING"):
+        keep_alive()
     
-    # Start the Telegram polling
-    # none_stop=True helps it reconnect if there's a network blip
     bot.infinity_polling(none_stop=True)

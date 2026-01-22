@@ -8,3 +8,4 @@ textblob
 numpy
 scipy
 flask
+gunicorn
