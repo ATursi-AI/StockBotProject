@@ -16,15 +16,13 @@ if not TELEGRAM_TOKEN:
 bot = telebot.TeleBot(TELEGRAM_TOKEN)
 
 # --- WEB SERVER (HEARTBEAT) ---
-app = Flask(__name__) # Use __name__ instead of '' for Gunicorn
+app = Flask(__name__)
 
 @app.route('/')
 def home():
     return "I am alive!"
 
 def run():
-    # This is still here for local testing, 
-    # but Gunicorn will handle the port on Render.
     port = int(os.environ.get("PORT", 8080))
     app.run(host='0.0.0.0', port=port)
 
@@ -56,9 +54,12 @@ def handle_stock(message):
         bot.reply_to(message, f"❌ Could not find data for '{symbol}'.")
 
 if __name__ == "__main__":
-    # If running locally (python bot.py), keep_alive starts the server.
-    # On Render, Gunicorn will start 'app' directly.
+    # Remove any existing webhooks that might cause 409 conflicts
+    bot.remove_webhook()
+    
     if not os.environ.get("GUNICORN_RUNNING"):
         keep_alive()
     
-    bot.infinity_polling(none_stop=True)
+    # infinity_polling with skip_pending=True ignores old messages 
+    # that piled up during the conflict
+    bot.infinity_polling(none_stop=True, skip_pending=True)
