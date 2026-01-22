@@ -18,7 +18,7 @@ def get_stock_data(symbol):
         # 2. DATA ACQUISITION
         ticker = yf.Ticker(symbol)
         df = ticker.history(period="1y")
-        if df.empty: return None
+        if df.empty or len(df) < 10: return "❌ Analysis Error: Insufficient historical data."
 
         # 3. TECHNICAL CALCULATIONS
         df['RSI'] = ta.rsi(df['Close'], length=14)
@@ -42,7 +42,7 @@ def get_stock_data(symbol):
         titles = " ".join([n.get('title', '') for n in news])
         sentiment = TextBlob(titles).sentiment.polarity if titles else 0
 
-        # 5. INSTITUTIONAL INTEL (Crash Prevention Logic)
+        # 5. INSTITUTIONAL INTEL
         pcr = "N/A"
         whale_alert = "No unusual spikes"
         try:
@@ -58,10 +58,9 @@ def get_stock_data(symbol):
                 high_oi_calls = opt.calls[opt.calls['volume'] > opt.calls['openInterest']]
                 if not high_oi_calls.empty:
                     whale_alert = f"🚨 UNUSUAL OI SPIKE at ${high_oi_calls.iloc[0]['strike']} Call"
-        except Exception: 
-            pcr = "N/A (Limited Data)"
+        except: pcr = "N/A (Limited Data)"
 
-        # 6. AI PATTERN ARCHITECT (Stable Logic)
+        # 6. AI PATTERN ARCHITECT
         patterns = []
         last, prev = df.iloc[-1], df.iloc[-2]
         if last['Close'] > prev['Open'] and last['Open'] < prev['Close'] and last['Close'] > last['Open'] and prev['Close'] < prev['Open']:
@@ -80,19 +79,31 @@ def get_stock_data(symbol):
         sma50, sma200 = df['SMA_50'].iloc[-1], df['SMA_200'].iloc[-1]
 
         cross_trigger = ""
-        if df['SMA_50'].iloc[-2] < df['SMA_200'].iloc[-2] and sma50 >= sma200:
-            cross_trigger = "\n🌟 **TRIGGER: GOLDEN CROSS**"
-        elif df['SMA_50'].iloc[-2] > df['SMA_200'].iloc[-2] and sma50 <= sma200:
-            cross_trigger = "\n💀 **TRIGGER: DEATH CROSS**"
+        # Safety Check for SMA Triggers
+        if sma50 is not None and sma200 is not None and not df['SMA_50'].isnull().iloc[-2]:
+            if df['SMA_50'].iloc[-2] < df['SMA_200'].iloc[-2] and sma50 >= sma200:
+                cross_trigger = "\n🌟 **TRIGGER: GOLDEN CROSS**"
+            elif df['SMA_50'].iloc[-2] > df['SMA_200'].iloc[-2] and sma50 <= sma200:
+                cross_trigger = "\n💀 **TRIGGER: DEATH CROSS**"
 
-        if price > sma50 and sma50 > sma200:
-            synopsis = "Bullish trend confirmed; institutional support is holding above the 50-day SMA."
-        elif price < sma50 and price > sma200:
-            synopsis = "Consolidating; price has lost the 50-day support but remains above the 200-day floor."
+        # Safety Check for Synopsis
+        if sma50 is not None and sma200 is not None:
+            if price > sma50 and sma50 > sma200:
+                synopsis = "Bullish trend confirmed; institutional support is holding above the 50-day SMA."
+            elif price < sma50 and price > sma200:
+                synopsis = "Consolidating; price has lost the 50-day support but remains above the 200-day floor."
+            else:
+                synopsis = "Bearish pattern; price action is trending below major institutional moving averages."
         else:
-            synopsis = "Bearish pattern; price action is trending below major institutional moving averages."
+            synopsis = "Technical trend is currently neutral due to insufficient SMA data."
 
         # 8. FINAL OUTPUT
+        # Verdict safety check
+        verdict = "⚠️ HOLD"
+        if rsi is not None and sma50 is not None:
+            if rsi < 55 and price > sma50:
+                verdict = "🚀 STRONG BUY"
+
         return (
             f"🔍 **SUPER-SCAN: {symbol.upper()}**\n"
             f"🏢 *{full_name}*\n"
@@ -107,12 +118,12 @@ def get_stock_data(symbol):
             f"🤖 **AI PATTERN ARCHITECT**\n"
             f"Identified: `{pattern_text}`\n\n"
             f"📊 **TECHNICAL SCAN**\n"
-            f"{'🟢' if rsi < 45 else '🔴' if rsi > 65 else '🟡'} RSI: {rsi:.1f}\n"
+            f"{'🟢' if rsi < 45 else '🔴' if rsi > 65 else '🟡'} RSI: {rsi:.1f if rsi else 0.0}\n"
             f"{'🟢' if df['MACD'].iloc[-1] > df['SIGNAL'].iloc[-1] else '🔴'} MACD: {'Bullish' if df['MACD'].iloc[-1] > df['SIGNAL'].iloc[-1] else 'Bearish'}\n"
-            f"{'🔵' if adx > 25 else '⚪️'} ADX: {adx:.1f} (Strength)\n"
-            f"• 50-Day SMA: ${sma50:.2f}\n"
-            f"• 200-Day SMA: ${sma200:.2f}\n"
-            f"• Trend: {'📈 Uptrend' if price > sma200 else '📉 Downtrend'}\n\n"
+            f"{'🔵' if adx > 25 else '⚪️'} ADX: {adx:.1f if adx else 0.0} (Strength)\n"
+            f"• 50-Day SMA: ${sma50:.2f if sma50 else 0.00}\n"
+            f"• 200-Day SMA: ${sma200:.2f if sma200 else 0.00}\n"
+            f"• Trend: {'📈 Uptrend' if sma200 and price > sma200 else '📉 Downtrend'}\n\n"
             f"📜 **TECHNICAL SYNOPSIS**\n"
             f"_{synopsis}_{cross_trigger}\n\n"
             f"🧱 **LEVELS & RISK**\n"
@@ -123,7 +134,7 @@ def get_stock_data(symbol):
             f"• Target 1: ${price * 1.05:.2f} (+5%)\n"
             f"• Target 2: ${price * 1.12:.2f} (+12%)\n"
             f"• Moon: ${price * 1.25:.2f} (+25%)\n\n"
-            f"🏆 **FINAL VERDICT: {'🚀 STRONG BUY' if rsi < 55 and price > sma50 else '⚠️ HOLD'}**\n"
+            f"🏆 **FINAL VERDICT: {verdict}**\n"
             f"━━━━━━━━━━━━━━━━━━━━"
         )
     except Exception as e:
