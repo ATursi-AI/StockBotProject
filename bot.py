@@ -34,29 +34,15 @@ def start_bot():
         time.sleep(10) # Wait before Render restarts the process
 
 # 3. Start the bot in a background thread
-threading_bot = Thread(target=start_bot)
-threading_bot.daemon = True
-threading_bot.start()
+def run_bot():
+    start_bot()
 
-@bot.message_handler(commands=['start', 'help'])
-def send_welcome(message):
-    bot.reply_to(message, "Send me a ticker symbol (e.g., AAPL) for a Super-Scan.")
-
-@bot.message_handler(func=lambda message: True)
-def handle_stock(message):
-    symbol = message.text.upper().strip()
-    # Basic validation to ensure it looks like a ticker
-    if len(symbol) > 6 or not symbol.isalpha():
-        return
-
-    bot.send_chat_action(message.chat.id, 'typing')
-    try:
-        report = get_stock_data(symbol)
-        if report:
-            bot.reply_to(message, report, parse_mode='Markdown')
-        else:
-            bot.reply_to(message, "❌ Analysis Error: Could not generate report.")
-    except Exception as e:
-        bot.reply_to(message, f"❌ System Error: {str(e)}")
-
-# Gunicorn uses 'app' directly
+if __name__ == "__main__":
+    # This starts the bot thread
+    threading_bot = Thread(target=run_bot)
+    threading_bot.daemon = True
+    threading_bot.start()
+    
+    # This starts the Flask web server that Render needs to see
+    port = int(os.environ.get("PORT", 10000))
+    app.run(host='0.0.0.0', port=port)
