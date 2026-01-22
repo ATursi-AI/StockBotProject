@@ -1,4 +1,10 @@
-python-telegram-bot
+pyTelegramBotAPI
+python-dotenv
+requests
 yfinance
+pandas
 pandas_ta
-matplotlib
+textblob
+numpy
+scipy
+flask

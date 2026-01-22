@@ -1,52 +1,72 @@
-from telegram import Update
-from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
-import stock_analyzer  # Ensure this file is in the same folder
 import os
+import telebot
+from flask import Flask
+from threading import Thread
+from dotenv import load_dotenv
+from stock_analyzer import get_stock_data
 
-# --- CONFIGURATION ---
-TOKEN = "8526258831:AAFZs9Fqs0NsjRAqkhaW-5cveouUpuFIoJo"
+# 1. Load Environment Variables
+load_dotenv()
 
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Initial Welcome Message"""
-    await update.message.reply_text(
-        "🤖 **StockBot Pro V18 Online**\n\n"
-        "Send me any ticker symbol (e.g., NVDA) for a Deep Scan report."
-    )
+# 2. Grab the Token safely
+TELEGRAM_TOKEN = os.getenv("TELEGRAM_STOCK_TOKEN")
 
-async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Main Logic: Responds to Tickers"""
-    # 1. Clean up user input
-    user_input = update.message.text.upper().strip()
+if not TELEGRAM_TOKEN:
+    print("❌ Error: TELEGRAM_STOCK_TOKEN not found.")
+    exit()
+else:
+    print("✅ Token loaded successfully.")
+
+# 3. Initialize the Bot
+bot = telebot.TeleBot(TELEGRAM_TOKEN)
+
+# --- RENDER HEARTBEAT SETUP ---
+app = Flask('')
+
+@app.route('/')
+def home():
+    return "I am alive!"
+
+def run():
+    # Render provides a 'PORT' environment variable. We MUST use it.
+    port = int(os.environ.get("PORT", 8080))
+    app.run(host='0.0.0.0', port=port)
+
+def keep_alive():
+    t = Thread(target=run)
+    t.daemon = True  # Ensures the thread closes when the main program stops
+    t.start()
+# ------------------------------
+
+print("📈 WallStreetBot is online. Waiting for tickers...")
+
+# --- TELEGRAM HANDLERS ---
+
+@bot.message_handler(commands=['start', 'help'])
+def send_welcome(message):
+    bot.reply_to(message, "Send me a ticker symbol (e.g., AAPL, NVDA) for a technical analysis.")
+
+@bot.message_handler(func=lambda message: True)
+def handle_stock(message):
+    symbol = message.text.upper().strip()
     
-    # 2. Professional UX Update: "Analyzing..." instead of "Drawing..."
-    status_msg = await update.message.reply_text(f"🚀 Analyzing {user_input}...")
+    if " " in symbol or len(symbol) > 6:
+        bot.reply_to(message, "Please send a valid ticker symbol (e.g., NVDA).")
+        return
 
-    try:
-        # 3. Call the Brain
-        # This is where the 'AttributeError' happens if analyze_stock isn't defined
-        chart_file, report = stock_analyzer.analyze_stock(user_input)
-        
-        # 4. Send the Professional Text Report
-        await update.message.reply_text(report, parse_mode="Markdown")
-        
-        # 5. Optional: Cleanup chart file if one was created
-        if chart_file and os.path.exists(chart_file):
-            os.remove(chart_file)
-
-    except AttributeError:
-        await update.message.reply_text("⚠️ Error: The analyzer engine is missing the 'analyze_stock' function.")
-    except Exception as e:
-        await update.message.reply_text(f"⚠️ Analysis Error: {str(e)}")
-    finally:
-        # Delete the "Analyzing..." status to keep the chat clean
-        await context.bot.delete_message(chat_id=update.effective_chat.id, message_id=status_msg.message_id)
-
-if __name__ == '__main__':
-    app = ApplicationBuilder().token(TOKEN).build()
+    bot.send_chat_action(message.chat.id, 'typing')
+    report = get_stock_data(symbol)
     
-    # Listeners
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), handle_message))
+    if report:
+        bot.reply_to(message, report, parse_mode='Markdown')
+    else:
+        bot.reply_to(message, f"❌ Could not find data for '{symbol}'.")
 
-    print("💎 StockBot Pro is live and listening...")
-    app.run_polling()
+# 4. Run the Bot
+if __name__ == "__main__":
+    # Start the web server first
+    keep_alive()
+    
+    # Start the Telegram polling
+    # none_stop=True helps it reconnect if there's a network blip
+    bot.infinity_polling(none_stop=True)

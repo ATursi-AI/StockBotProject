@@ -4,10 +4,13 @@ import pandas as pd
 from textblob import TextBlob
 import requests
 import numpy as np
+import os
 from scipy.signal import argrelextrema
+from dotenv import load_dotenv
 
-# --- CONFIGURATION ---
-FINNHUB_KEY = "d5o481pr01qma2b7favgd5o481pr01qma2b7fb00" 
+# Load Security Keys
+load_dotenv()
+FINNHUB_KEY = os.getenv("FINNHUB_KEY")
 
 # --- 1. INTELLIGENCE HELPERS ---
 
@@ -41,13 +44,18 @@ def get_finnhub_catalyst(ticker):
         surp_msg, s_score = "⚪ No Data", 0
         if data_e and len(data_e) > 0:
             last = data_e[0]
-            diff = (last.get('actual', 0) or 0) - (last.get('estimate', 0) or 0)
+            # Use .get with 0 as default to prevent math errors
+            actual = last.get('actual') or 0
+            estimate = last.get('estimate') or 0
+            diff = actual - estimate
             surp_msg = f"✅ BEAT (+{diff:.2f})" if diff > 0 else f"❌ MISS ({diff:.2f})"
             s_score = 1 if diff > 0 else -1
+        
         # Targets
         url_t = f"https://finnhub.io/api/v1/stock/price-target?symbol={ticker}&token={FINNHUB_KEY}"
         data_t = requests.get(url_t).json()
         target = f"${data_t['targetMean']:.2f}" if data_t and 'targetMean' in data_t else "⚪ N/A"
+        
         return surp_msg, target, s_score
     except: return "⚪ Error", "⚪ N/A", 0
 
@@ -56,8 +64,11 @@ def detect_ai_patterns(df):
     last, prev = df.iloc[-1], df.iloc[-2]
     close_prices = df['Close'].values
     patterns, p_score = [], 0
+    
+    # Advanced Peak/Valley Detection
     peaks = argrelextrema(close_prices, np.greater, order=5)[0]
     valleys = argrelextrema(close_prices, np.less, order=5)[0]
+    
     if len(peaks) >= 2 and len(valleys) >= 2:
         if abs(close_prices[peaks[-1]] - close_prices[peaks[-2]]) / close_prices[peaks[-1]] < 0.02:
             patterns.append("⛰️ DOUBLE TOP")
@@ -65,56 +76,58 @@ def detect_ai_patterns(df):
         if abs(close_prices[valleys[-1]] - close_prices[valleys[-2]]) / close_prices[valleys[-1]] < 0.02:
             patterns.append("🏹 DOUBLE BOTTOM")
             p_score += 1.5
+            
+    # Candlestick Logic
     body = abs(last['Close'] - last['Open'])
     total_range = last['High'] - last['Low']
     if (last['Low'] < min(last['Open'], last['Close'])) and (body < total_range * 0.3):
         patterns.append("🔨 HAMMER")
         p_score += 1
-    if prev['Close'] < prev['Open'] and last['Close'] > last['Open']:
-        patterns.append("✨ BULLISH ENGULFING")
-        p_score += 1
+        
     return " | ".join(patterns) if patterns else "No clear patterns", p_score
 
 # --- 2. MASTER ANALYSIS ENGINE ---
 
-def analyze_stock(ticker):
+def get_stock_data(ticker):
     try:
         stock_obj = yf.Ticker(ticker)
         df = stock_obj.history(period="1y")
-        if df.empty: return None, f"❌ {ticker} not found."
+        if df.empty: return None
         if isinstance(df.columns, pd.MultiIndex): df.columns = df.columns.get_level_values(0)
 
-        # Technical Indicators
+        # Technical Indicators (pandas_ta)
         df['RSI'] = ta.rsi(df['Close'], length=14)
-        macd = ta.macd(df['Close'])
-        df['MACD'] = macd.iloc[:, 0]
-        df['Signal'] = macd.iloc[:, 2]
+        macd_df = ta.macd(df['Close'])
+        df['MACD'] = macd_df.iloc[:, 0]
+        df['Signal'] = macd_df.iloc[:, 2]
         df['ADX'] = ta.adx(df['High'], df['Low'], df['Close'])['ADX_14']
         df['ATR'] = ta.atr(df['High'], df['Low'], df['Close'], length=14)
         
         latest, prev = df.dropna().iloc[-1], df.dropna().iloc[-2]
         price = latest['Close']
 
-        # Intelligence Gathering (Finnhub + Options + Sentiment + Patterns)
+        # Intelligence Gathering
         surp_msg, target_avg, c_score = get_finnhub_catalyst(ticker)
         opt_text, opt_score = get_options_intel(ticker)
         sent_label, sent_score = get_sentiment(ticker)
         pattern_text, p_score = detect_ai_patterns(df)
 
-        # Levels
+        # Pivots for Support/Resistance
         pp = (prev['High'] + prev['Low'] + prev['Close']) / 3
         r1, s1 = (2 * pp) - prev['Low'], (2 * pp) - prev['High']
 
-        # Total Scoring
-        score = sum([1 if latest['RSI'] < 35 else -1 if latest['RSI'] > 65 else 0,
-                     1 if latest['MACD'] > latest['Signal'] else -1,
-                     opt_score, sent_score, p_score, c_score])
+        # Total Weighted Scoring
+        score = sum([
+            1 if latest['RSI'] < 35 else -1 if latest['RSI'] > 65 else 0,
+            1 if latest['MACD'] > latest['Signal'] else -1,
+            opt_score, sent_score, p_score, c_score
+        ])
         
         verdict = "💎 STRONG BUY" if score >= 4 else "🐂 BULLISH" if score >= 1 else "🐻 BEARISH" if score <= -1 else "⚖️ NEUTRAL"
 
-        # RE-INTEGRATED COMPLETE REPORT
-        report = (
-            f"🔍 **SUPER-SCAN: {ticker}**\n"
+        # Final Construction
+        return (
+            f"🔍 **SUPER-SCAN: {ticker.upper()}**\n"
             f"💰 Price: **${price:.2f}** | Target: **{target_avg}**\n"
             f"━━━━━━━━━━━━━━━\n"
             f"🚀 **MARKET CATALYSTS (Finnhub)**\n"
@@ -132,8 +145,7 @@ def analyze_stock(ticker):
             f"Options: {opt_text}\n"
             f"━━━━━━━━━━━━━━━\n"
             f"🏁 **FINAL VERDICT: {verdict}**\n"
-            f"AI Confidence: **{min(int(score * 12 + 50), 100)}%**"
+            f"AI Confidence: **{min(max(int(score * 12 + 50), 0), 100)}%**"
         )
-        return None, report
     except Exception as e:
-        return None, f"⚠️ Analysis failed: {e}"
+        return f"⚠️ Analysis failed: {e}"
