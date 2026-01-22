@@ -3,20 +3,21 @@ import pandas_ta as ta
 
 def get_stock_data(symbol):
     try:
+        # 1. Create the ticker object
         ticker = yf.Ticker(symbol)
         
-        # Pull the company info to get the full name
-        # We use ticker.info.get to prevent the bot from crashing if name is missing
-        info = ticker.info
-        full_name = info.get('longName', '')
-
-        # Get historical data
+        # 2. Get historical data first (this is the most reliable part of the library)
         df = ticker.history(period="1y")
 
         if df.empty:
             return None
 
-        # Technical Calculations
+        # 3. FIX: Get Company Name from Metadata instead of .info
+        # This works much better on Cloud Servers (Render)
+        metadata = ticker.history_metadata
+        full_name = metadata.get('longName', metadata.get('symbol', symbol.upper()))
+
+        # 4. Calculate Technicals
         df['RSI'] = ta.rsi(df['Close'], length=14)
         df['EMA_50'] = ta.ema(df['Close'], length=50)
 
@@ -25,7 +26,7 @@ def get_stock_data(symbol):
         
         rsi_signal = "🟢 BULLISH" if rsi_value < 30 else "🔴 BEARISH" if rsi_value > 70 else "🟡 NEUTRAL"
 
-        # The Header now displays: SYMBOL Full Name
+        # 5. Format the Header: "AAPL Apple Inc."
         report = (
             f"📊 *{symbol.upper()} {full_name}*\n"
             f"━━━━━━━━━━━━━━━━━━━━\n"
