@@ -21,15 +21,17 @@ def home():
 def start_bot():
     print("🚀 Bot process starting...")
     try:
-        # Kicks out any old 'ghost' connections from the previous deploy
-        bot.delete_webhook()
-        print("🧹 Old sessions cleared. Waiting 5 seconds for cleanup...")
+        # STEP 1: FORCE RESET - This kills any other instance's connection
+        bot.delete_webhook(drop_pending_updates=True)
+        print("🧹 Telegram connection reset. Waiting 5s for Render cleanup...")
         time.sleep(5) 
+        
+        print("📡 Initializing infinity_polling...")
+        # skip_pending=True ensures we don't spam old messages on startup
+        bot.infinity_polling(none_stop=True, skip_pending=True, timeout=60, long_polling_timeout=5)
     except Exception as e:
-        print(f"Non-critical setup warning: {e}")
-
-    print("📡 Initializing infinity_polling...")
-    bot.infinity_polling(none_stop=True, skip_pending=True)
+        print(f"❌ Critical Bot Error: {e}")
+        time.sleep(10) # Wait before Render restarts the process
 
 # 3. Start the bot in a background thread
 threading_bot = Thread(target=start_bot)
@@ -43,11 +45,18 @@ def send_welcome(message):
 @bot.message_handler(func=lambda message: True)
 def handle_stock(message):
     symbol = message.text.upper().strip()
-    bot.send_chat_action(message.chat.id, 'typing')
-    report = get_stock_data(symbol)
-    if report:
-        bot.reply_to(message, report, parse_mode='Markdown')
-    else:
-        bot.reply_to(message, "❌ Analysis Error.")
+    # Basic validation to ensure it looks like a ticker
+    if len(symbol) > 6 or not symbol.isalpha():
+        return
 
-# We don't need the __main__ block because Gunicorn handles the 'app' directly.
+    bot.send_chat_action(message.chat.id, 'typing')
+    try:
+        report = get_stock_data(symbol)
+        if report:
+            bot.reply_to(message, report, parse_mode='Markdown')
+        else:
+            bot.reply_to(message, "❌ Analysis Error: Could not generate report.")
+    except Exception as e:
+        bot.reply_to(message, f"❌ System Error: {str(e)}")
+
+# Gunicorn uses 'app' directly
