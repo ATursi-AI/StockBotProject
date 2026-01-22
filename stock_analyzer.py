@@ -10,28 +10,27 @@ FINNHUB_KEY = os.getenv("FINNHUB_KEY")
 
 def get_stock_data(symbol):
     try:
-        # 1. CLOUD-SAFE NAME RETRIEVAL
+        # 1. Company Name (Finnhub)
         name_url = f'https://finnhub.io/api/v1/stock/profile2?symbol={symbol.upper()}&token={FINNHUB_KEY}'
         name_response = requests.get(name_url).json()
         full_name = name_response.get('name', symbol.upper())
 
-        # 2. CORE DATA FETCH
+        # 2. Core Data Fetch
         ticker = yf.Ticker(symbol)
         df = ticker.history(period="1y")
         if df.empty: return None
 
-        # 3. ROBUST INDICATORS
+        # 3. Robust Indicators
         df['RSI'] = ta.rsi(df['Close'], length=14)
         df['SMA_50'] = ta.sma(df['Close'], length=50)
         df['SMA_200'] = ta.sma(df['Close'], length=200)
         df['ATR'] = ta.atr(df['High'], df['Low'], df['Close'], length=14)
         
-        # MACD for Momentum
         macd = ta.macd(df['Close'])
         df['MACD'] = macd['MACD_12_26_9']
         df['SIGNAL'] = macd['MACDs_12_26_9']
 
-        # 4. CURRENT VALUES
+        # 4. Current Values
         price = df['Close'].iloc[-1]
         rsi = df['RSI'].iloc[-1]
         sma50 = df['SMA_50'].iloc[-1]
@@ -40,39 +39,37 @@ def get_stock_data(symbol):
         macd_val = df['MACD'].iloc[-1]
         sig_val = df['SIGNAL'].iloc[-1]
 
-        # 5. FIXED GOLDEN CROSS LOGIC
-        # Only Green if 50 is ABOVE 200. Red if BELOW.
+        # 5. Golden Cross Logic
         if sma50 > sma200:
-            gc_status = "✅ GOLDEN CROSS (Bullish)"
-            gc_emoji = "🟢"
+            gc_status, gc_emoji = "✅ GOLDEN CROSS", "🟢"
         else:
-            gc_status = "❌ DEATH CROSS (Bearish)"
-            gc_emoji = "🔴"
+            gc_status, gc_emoji = "❌ DEATH CROSS", "🔴"
 
-        # 6. TECHNICAL CHART SYNOPSIS
-        # This builds a narrative based on the data points
-        synopsis = ""
+        # 6. Technical Chart Synopsis
         if price > sma50 and sma50 > sma200:
-            synopsis = "Stock is in a strong institutional uptrend, holding above key moving averages."
+            synopsis = "Bullish trend confirmed; institutional support is holding."
         elif price < sma50 and price > sma200:
-            synopsis = "Stock is consolidating; it has lost the 50-day support but remains above the long-term 200-day floor."
+            synopsis = "Short-term weakness; consolidating above long-term 200-day support."
         else:
-            synopsis = "Chart pattern shows significant weakness; selling pressure is dominating the short and long term."
+            synopsis = "Bearish pattern; price action is below major moving averages."
 
-        # 7. SENTIMENT & VERDICT
+        # 7. Sentiment (FIXED: Defined the list comprehension correctly)
         news = ticker.news[:3]
         sentiment = 0
         if news:
-            sentiment = TextBlob(" ".join([n['title'] for n in news])).sentiment.polarity
+            # We explicitly pull 'title' from each news item 'n'
+            combined_titles = " ".join([n.get('title', '') for n in news])
+            sentiment = TextBlob(combined_titles).sentiment.polarity
         
+        # 8. Verdict Logic
         score = 0
-        if rsi < 40: score += 1
+        if rsi < 45: score += 1
         if price > sma50: score += 1
         if macd_val > sig_val: score += 1
         verdict = "🚀 STRONG BUY" if score >= 2 else "⚠️ HOLD" if score >= 1 else "📉 SELL"
 
-        # 8. THE FINAL ROBUST OUTPUT
-        report = (
+        # 9. The Final Robust Output
+        return (
             f"🔍 **SUPER-SCAN: {symbol.upper()}**\n"
             f"🏢 *{full_name}*\n"
             f"━━━━━━━━━━━━━━━━━━━━\n"
@@ -90,7 +87,7 @@ def get_stock_data(symbol):
             f"🏆 **VERDICT: {verdict}**\n"
             f"━━━━━━━━━━━━━━━━━━━━"
         )
-        return report
 
     except Exception as e:
-        return f"❌ Analysis Error: Check your FINNHUB_KEY and Ticker."
+        # Added more detail to the error message so we can catch it faster
+        return f"❌ Analysis Error: {str(e)}"
