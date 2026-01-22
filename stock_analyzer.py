@@ -71,28 +71,34 @@ def get_stock_data(symbol):
             patterns.append("Hammer (Bullish)")
         pattern_text = ", ".join(patterns) if patterns else "No clear patterns identified"
 
-        # 7. VALUES & TRIGGERS
+        # 7. VALUES & TRIGGERS (CLEAN FORMATTING)
         price = df['Close'].iloc[-1]
-        
-        # FIXED: Simple logic to avoid format specifier errors
         rsi_val = float(df['RSI'].iloc[-1]) if not df['RSI'].isnull().iloc[-1] else 0.0
         adx_val = float(df['ADX'].iloc[-1]) if not df['ADX'].isnull().iloc[-1] else 0.0
+        atr_val = float(df['ATR'].iloc[-1]) if not df['ATR'].isnull().iloc[-1] else 0.0
         
+        sma50_raw = df['SMA_50'].iloc[-1]
+        sma200_raw = df['SMA_200'].iloc[-1]
+        
+        # PRE-FORMATTING TO PREVENT CRASHES
+        sma50_display = f"{sma50_raw:.2f}" if sma50_raw and not os.path.isnan(sma50_raw) else "0.00"
+        sma200_display = f"{sma200_raw:.2f}" if sma200_raw and not os.path.isnan(sma200_raw) else "0.00"
+        rsi_display = f"{rsi_val:.1f}"
+        adx_display = f"{adx_val:.1f}"
+
         hi_52, lo_52 = df['High'].max(), df['Low'].min()
-        atr = df['ATR'].iloc[-1]
-        sma50, sma200 = df['SMA_50'].iloc[-1], df['SMA_200'].iloc[-1]
 
         cross_trigger = ""
-        if sma50 is not None and sma200 is not None and not df['SMA_50'].isnull().iloc[-2]:
-            if df['SMA_50'].iloc[-2] < df['SMA_200'].iloc[-2] and sma50 >= sma200:
+        if sma50_raw and sma200_raw and not df['SMA_50'].isnull().iloc[-2]:
+            if df['SMA_50'].iloc[-2] < df['SMA_200'].iloc[-2] and sma50_raw >= sma200_raw:
                 cross_trigger = "\n🌟 **TRIGGER: GOLDEN CROSS**"
-            elif df['SMA_50'].iloc[-2] > df['SMA_200'].iloc[-2] and sma50 <= sma200:
+            elif df['SMA_50'].iloc[-2] > df['SMA_200'].iloc[-2] and sma50_raw <= sma200_raw:
                 cross_trigger = "\n💀 **TRIGGER: DEATH CROSS**"
 
-        if sma50 is not None and sma200 is not None:
-            if price > sma50 and sma50 > sma200:
+        if sma50_raw and sma200_raw:
+            if price > sma50_raw and sma50_raw > sma200_raw:
                 synopsis = "Bullish trend confirmed; institutional support is holding above the 50-day SMA."
-            elif price < sma50 and price > sma200:
+            elif price < sma50_raw and price > sma200_raw:
                 synopsis = "Consolidating; price has lost the 50-day support but remains above the 200-day floor."
             else:
                 synopsis = "Bearish pattern; price action is trending below major institutional moving averages."
@@ -101,7 +107,7 @@ def get_stock_data(symbol):
 
         # 8. FINAL OUTPUT
         verdict = "⚠️ HOLD"
-        if rsi_val > 0 and rsi_val < 55 and sma50 and price > sma50:
+        if rsi_val > 0 and rsi_val < 55 and sma50_raw and price > sma50_raw:
             verdict = "🚀 STRONG BUY"
 
         return (
@@ -118,17 +124,17 @@ def get_stock_data(symbol):
             f"🤖 **AI PATTERN ARCHITECT**\n"
             f"Identified: `{pattern_text}`\n\n"
             f"📊 **TECHNICAL SCAN**\n"
-            f"{'🟢' if rsi_val < 45 else '🔴' if rsi_val > 65 else '🟡'} RSI: {rsi_val:.1f}\n"
+            f"{'🟢' if rsi_val < 45 else '🔴' if rsi_val > 65 else '🟡'} RSI: {rsi_display}\n"
             f"{'🟢' if df['MACD'].iloc[-1] > df['SIGNAL'].iloc[-1] else '🔴'} MACD: {'Bullish' if df['MACD'].iloc[-1] > df['SIGNAL'].iloc[-1] else 'Bearish'}\n"
-            f"{'🔵' if adx_val > 25 else '⚪️'} ADX: {adx_val:.1f} (Strength)\n"
-            f"• 50-Day SMA: ${sma50:.2f if sma50 else 0.00}\n"
-            f"• 200-Day SMA: ${sma200:.2f if sma200 else 0.00}\n"
-            f"• Trend: {'📈 Uptrend' if sma200 and price > sma200 else '📉 Downtrend'}\n\n"
+            f"{'🔵' if adx_val > 25 else '⚪️'} ADX: {adx_display} (Strength)\n"
+            f"• 50-Day SMA: ${sma50_display}\n"
+            f"• 200-Day SMA: ${sma200_display}\n"
+            f"• Trend: {'📈 Uptrend' if sma200_raw and price > sma200_raw else '📉 Downtrend'}\n\n"
             f"📜 **TECHNICAL SYNOPSIS**\n"
             f"_{synopsis}_{cross_trigger}\n\n"
             f"🧱 **LEVELS & RISK**\n"
             f"Resist: ${df['High'].iloc[-5:].max():.2f} | Support: ${df['Low'].iloc[-5:].min():.2f}\n"
-            f"Stop Loss: ${price - (atr*2):.2f}\n\n"
+            f"Stop Loss: ${price - (atr_val*2):.2f}\n\n"
             f"🎯 **TRADE PLAN (Moon Mission)**\n"
             f"• Entry: ${price:.2f}\n"
             f"• Target 1: ${price * 1.05:.2f} (+5%)\n"
