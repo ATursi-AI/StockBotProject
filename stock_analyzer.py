@@ -58,22 +58,23 @@ def get_stock_data(symbol):
                     whale_alert = f"🚨 UNUSUAL OI SPIKE at ${high_oi_calls.iloc[0]['strike']} Call"
         except: pass
 
-        # 6. AI PATTERN ARCHITECT
+        # 6. AI PATTERN ARCHITECT (Stable Logic - No TA-Lib required)
         patterns = []
-        cdl = ta.cdl_pattern(df['Open'], df['High'], df['Low'], df['Close'], name="all")
-        if not cdl.empty:
-            last_row = cdl.iloc[-1]
-            found = last_row[last_row != 0]
-            for name, val in found.items():
-                sentiment_type = "Bullish" if val > 0 else "Bearish"
-                clean_name = name.replace('CDL_', '').replace('_', ' ').title()
-                patterns.append(f"{clean_name} ({sentiment_type})")
+        last, prev = df.iloc[-1], df.iloc[-2]
+        # Manual check for Engulfing
+        if last['Close'] > prev['Open'] and last['Open'] < prev['Close'] and last['Close'] > last['Open'] and prev['Close'] < prev['Open']:
+            patterns.append("Engulfing (Bullish)")
+        # Manual check for Hammer
+        body = abs(last['Close'] - last['Open'])
+        lower_wick = min(last['Open'], last['Close']) - last['Low']
+        if lower_wick > (body * 2):
+            patterns.append("Hammer (Bullish)")
+        
         pattern_text = ", ".join(patterns) if patterns else "No clear patterns identified"
 
-        # 7. VALUES & SYNOPSIS
+        # 7. VALUES & TRIGGERS
         price = df['Close'].iloc[-1]
-        rsi = df['RSI'].iloc[-1]
-        adx = df['ADX'].iloc[-1]
+        rsi, adx = df['RSI'].iloc[-1], df['ADX'].iloc[-1]
         hi_52, lo_52 = df['High'].max(), df['Low'].min()
         atr = df['ATR'].iloc[-1]
         sma50, sma200 = df['SMA_50'].iloc[-1], df['SMA_200'].iloc[-1]
@@ -91,7 +92,7 @@ def get_stock_data(symbol):
         else:
             synopsis = "Bearish pattern; price action is trending below major institutional moving averages."
 
-        # 8. FINAL OUTPUT
+        # 8. FINAL OUTPUT (Matching the Gold Standard sequence)
         return (
             f"🔍 **SUPER-SCAN: {symbol.upper()}**\n"
             f"🏢 *{full_name}*\n"
@@ -100,7 +101,7 @@ def get_stock_data(symbol):
             f"🚀 **MARKET CATALYSTS (Finnhub)**\n"
             f"Earnings: {earn_text}\n"
             f"Mood: {'🔥 Bullish' if sentiment > 0.1 else '🧊 Bearish' if sentiment < -0.1 else 'Neutral'}\n\n"
-            f" Whale **INSTITUTIONAL INTEL**\n"
+            f"🐋 **INSTITUTIONAL INTEL**\n"
             f"• Put/Call Ratio: {pcr}\n"
             f"• Whale Activity: {whale_alert}\n\n"
             f"🤖 **AI PATTERN ARCHITECT**\n"
