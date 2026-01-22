@@ -1,8 +1,8 @@
 import os
 import telebot
 import time
-import threading
 from flask import Flask
+from threading import Thread
 from dotenv import load_dotenv
 from stock_analyzer import get_stock_data
 
@@ -13,27 +13,29 @@ TELEGRAM_TOKEN = os.getenv("TELEGRAM_STOCK_TOKEN")
 bot = telebot.TeleBot(TELEGRAM_TOKEN)
 app = Flask(__name__)
 
-# 2. THE BACKGROUND POLLING FUNCTION
-def run_bot_background():
+# 2. HEARTBEAT ROUTE
+@app.route('/')
+def home():
+    return "📈 WallStreetBot Heartbeat: Active"
+
+# 3. BACKGROUND WORKER
+def run_bot():
     print("🚀 Background Bot process starting...")
     try:
-        # Clear old sessions
+        # Force a clean start by dropping old updates
         bot.delete_webhook(drop_pending_updates=True)
-        time.sleep(5) 
+        time.sleep(2)
         print("📡 Bot is now POLLING...")
         bot.infinity_polling(none_stop=True, skip_pending=True)
     except Exception as e:
         print(f"❌ Polling Error: {e}")
 
-# 3. START THE THREAD IMMEDIATELY
-# This ensures the thread starts regardless of how Gunicorn boots the app
-bot_thread = threading.Thread(target=run_bot_background, daemon=True)
-bot_thread.start()
+# This starts the thread only once, even with Gunicorn workers
+if os.environ.get('WERKZEUG_RUN_MAIN') != 'true':
+    daemon = Thread(target=run_bot, daemon=True)
+    daemon.start()
 
-@app.route('/')
-def home():
-    return "📈 WallStreetBot is active and polling!"
-
+# 4. BOT HANDLERS
 @bot.message_handler(commands=['start', 'help'])
 def send_welcome(message):
     bot.reply_to(message, "Send me a ticker symbol (e.g., AAPL) for a Super-Scan.")
@@ -50,6 +52,5 @@ def handle_stock(message):
         bot.reply_to(message, f"❌ System Error: {str(e)}")
 
 if __name__ == "__main__":
-    # Local testing only; Render uses Gunicorn to call 'app'
     port = int(os.environ.get("PORT", 10000))
     app.run(host='0.0.0.0', port=port)
