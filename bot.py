@@ -1,5 +1,6 @@
 import os
 import telebot
+import time
 from flask import Flask
 from threading import Thread
 from dotenv import load_dotenv
@@ -19,8 +20,15 @@ def home():
 # 2. This function handles the Telegram polling
 def start_bot():
     print("🚀 Bot process starting...")
-    # This prevents the 409 Conflict by clearing old connections
-    bot.remove_webhook()
+    try:
+        # Kicks out any old 'ghost' connections from the previous deploy
+        bot.delete_webhook()
+        print("🧹 Old sessions cleared. Waiting 5 seconds for cleanup...")
+        time.sleep(5) 
+    except Exception as e:
+        print(f"Non-critical setup warning: {e}")
+
+    print("📡 Initializing infinity_polling...")
     bot.infinity_polling(none_stop=True, skip_pending=True)
 
 # 3. Start the bot in a background thread
@@ -41,3 +49,5 @@ def handle_stock(message):
         bot.reply_to(message, report, parse_mode='Markdown')
     else:
         bot.reply_to(message, "❌ Analysis Error.")
+
+# We don't need the __main__ block because Gunicorn handles the 'app' directly.
