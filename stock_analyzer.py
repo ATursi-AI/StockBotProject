@@ -10,71 +10,87 @@ FINNHUB_KEY = os.getenv("FINNHUB_KEY")
 
 def get_stock_data(symbol):
     try:
-        # 1. Company Name (Finnhub)
+        # 1. CLOUD-SAFE NAME RETRIEVAL
         name_url = f'https://finnhub.io/api/v1/stock/profile2?symbol={symbol.upper()}&token={FINNHUB_KEY}'
         name_response = requests.get(name_url).json()
         full_name = name_response.get('name', symbol.upper())
 
-        # 2. Price Data & Technicals
+        # 2. CORE DATA FETCH
         ticker = yf.Ticker(symbol)
         df = ticker.history(period="1y")
         if df.empty: return None
 
-        # Indicators
+        # 3. ROBUST INDICATORS
         df['RSI'] = ta.rsi(df['Close'], length=14)
+        df['SMA_50'] = ta.sma(df['Close'], length=50)
+        df['SMA_200'] = ta.sma(df['Close'], length=200)
+        df['ATR'] = ta.atr(df['High'], df['Low'], df['Close'], length=14)
+        
+        # MACD for Momentum
         macd = ta.macd(df['Close'])
         df['MACD'] = macd['MACD_12_26_9']
         df['SIGNAL'] = macd['MACDs_12_26_9']
-        adx = ta.adx(df['High'], df['Low'], df['Close'])
-        df['ADX'] = adx['ADX_14']
-        df['ATR'] = ta.atr(df['High'], df['Low'], df['Close'], length=14)
 
-        # 3. Intelligence (Sentiment & Catalysts)
-        news = ticker.news[:3]
-        sentiment_score = 0
-        if news:
-            titles = " ".join([n['title'] for n in news])
-            sentiment_score = TextBlob(titles).sentiment.polarity
-        
-        mood = "🔥 BULLISH" if sentiment_score > 0.1 else "🧊 BEARISH" if sentiment_score < -0.1 else "Neutral"
-
-        fin_url = f'https://finnhub.io/api/v1/stock/recommendation?symbol={symbol.upper()}&token={FINNHUB_KEY}'
-        fin_data = requests.get(fin_url).json()
-        analyst_target = "N/A"
-        if fin_data:
-            analyst_target = f"{fin_data[0]['buy'] + fin_data[0]['strongBuy']} Buy ratings"
-
-        # 4. Score & Verdict Logic
+        # 4. CURRENT VALUES
         price = df['Close'].iloc[-1]
         rsi = df['RSI'].iloc[-1]
-        adx_val = df['ADX'].iloc[-1]
+        sma50 = df['SMA_50'].iloc[-1]
+        sma200 = df['SMA_200'].iloc[-1]
+        atr = df['ATR'].iloc[-1]
+        macd_val = df['MACD'].iloc[-1]
+        sig_val = df['SIGNAL'].iloc[-1]
+
+        # 5. FIXED GOLDEN CROSS LOGIC
+        # Only Green if 50 is ABOVE 200. Red if BELOW.
+        if sma50 > sma200:
+            gc_status = "✅ GOLDEN CROSS (Bullish)"
+            gc_emoji = "🟢"
+        else:
+            gc_status = "❌ DEATH CROSS (Bearish)"
+            gc_emoji = "🔴"
+
+        # 6. TECHNICAL CHART SYNOPSIS
+        # This builds a narrative based on the data points
+        synopsis = ""
+        if price > sma50 and sma50 > sma200:
+            synopsis = "Stock is in a strong institutional uptrend, holding above key moving averages."
+        elif price < sma50 and price > sma200:
+            synopsis = "Stock is consolidating; it has lost the 50-day support but remains above the long-term 200-day floor."
+        else:
+            synopsis = "Chart pattern shows significant weakness; selling pressure is dominating the short and long term."
+
+        # 7. SENTIMENT & VERDICT
+        news = ticker.news[:3]
+        sentiment = 0
+        if news:
+            sentiment = TextBlob(" ".join([n['title'] for n in news])).sentiment.polarity
+        
         score = 0
         if rsi < 40: score += 1
-        if rsi > 70: score -= 1
-        if price > df['Close'].rolling(50).mean().iloc[-1]: score += 1
-        if sentiment_score > 0: score += 1
+        if price > sma50: score += 1
+        if macd_val > sig_val: score += 1
+        verdict = "🚀 STRONG BUY" if score >= 2 else "⚠️ HOLD" if score >= 1 else "📉 SELL"
 
-        verdict = "🚀 STRONG BUY" if score >= 2 else "⚠️ HOLD" if score >= 0 else "📉 SELL"
-
-        # 5. The Robust Output
+        # 8. THE FINAL ROBUST OUTPUT
         report = (
             f"🔍 **SUPER-SCAN: {symbol.upper()}**\n"
             f"🏢 *{full_name}*\n"
             f"━━━━━━━━━━━━━━━━━━━━\n"
             f"💰 **PRICE:** ${price:.2f}\n"
-            f"🎭 **MOOD:** {mood}\n"
-            f"📊 **ANALYSTS:** {analyst_target}\n\n"
+            f"🎭 **MOOD:** {'🔥 Bullish' if sentiment > 0 else '🧊 Bearish' if sentiment < 0 else 'Neutral'}\n\n"
+            f"📜 **TECHNICAL SYNOPSIS**\n"
+            f"_{synopsis}_\n\n"
             f"⚡ **SIGNALS**\n"
             f"{'🟢' if rsi < 45 else '🔴' if rsi > 65 else '🟡'} RSI: {rsi:.1f}\n"
-            f"{'🟢' if df['MACD'].iloc[-1] > df['SIGNAL'].iloc[-1] else '🔴'} MACD: Crossing\n"
-            f"{'🟢' if adx_val > 25 else '🟡'} Trend Strength: {adx_val:.1f}\n\n"
+            f"{gc_emoji} {gc_status}\n"
+            f"{'🟢' if macd_val > sig_val else '🔴'} Momentum: {'Bullish' if macd_val > sig_val else 'Bearish'}\n\n"
             f"🛡️ **RISK SETUP**\n"
-            f"• Stop Loss (2x ATR): ${price - (df['ATR'].iloc[-1]*2):.2f}\n"
-            f"• Volatility (ATR): ${df['ATR'].iloc[-1]:.2f}\n\n"
+            f"• Stop Loss: ${price - (atr*2):.2f}\n"
+            f"• 200-Day Floor: ${sma200:.2f}\n\n"
             f"🏆 **VERDICT: {verdict}**\n"
             f"━━━━━━━━━━━━━━━━━━━━"
         )
         return report
 
     except Exception as e:
-        return f"❌ Analysis Error: {str(e)}"
+        return f"❌ Analysis Error: Check your FINNHUB_KEY and Ticker."
